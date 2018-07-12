@@ -12,22 +12,20 @@ def binarize_conv_filters(W):
     """Binarize convolution weights and find the weight scaling factor
     W : theano tensor : convolution layer weight of dimension no_filters x no_feat_maps x h x w
     """
-    # symbolic binary weight
-    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)
-    # BinaryNet method
-    #Wb = T.cast(T.switch(T.round(hard_sigmoid(W),1,-1)), theano.config.floatX)
+   
+    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)   #Wb = sign(W)
+   
 
-    # weight scaling factor
-    # FIXME: directly compute the mean along axis 1,2,3 instead of reshaping    
+    # 计算weight scaling factor,对每个卷积核分别计算出均值
     alpha = T.mean( T.reshape(T.abs_(W), (W.shape[0], W.shape[1]*W.shape[2]*W.shape[3])), axis=1)
 
     return Wb, alpha
 
-def binarize_conv_input(conv_input, k):
+def binarize_conv_input(conv_input, k):   #？？？？？？？？？？？？？？？？？？？？？？？
 
-    # This is from BinaryNet.
-    # This acts like sign function during forward pass. and like hard_tanh during back propagation
-    bin_conv_out = binary_tanh_unit(conv_input)
+    # This is from external bnn_util.py
+    #将输入限制在-1~1之间(即对于-1~1之间的输入值不变，超出的范围裁剪为-1或1)  中间是线性的
+    bin_conv_out = binary_tanh_unit(conv_input)    # bin_conv_out =  hard_tanh(x) = 2*hard_sigmoid(x)-1  
 
     # scaling factor for the activation.
     A =T.abs_(conv_input)
@@ -37,7 +35,7 @@ def binarize_conv_input(conv_input, k):
     k_shape = k.eval().shape
     pad = (k_shape[-2]/2, k_shape[-1]/2)
     # support the kernel stride. This is necessary for AlexNet
-    K = theano.tensor.nnet.conv2d(A, k, border_mode=pad)
+    K = theano.tensor.nnet.conv2d(A, k, border_mode=pad)   # K = A * k     *是卷积操作
 
     return bin_conv_out, K
     
@@ -45,11 +43,9 @@ def binarize_conv_input(conv_input, k):
 
 def binarize_fc_weights(W):
     # symbolic binary weight
-    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)
-    # BinaryNet method
-    #Wb = T.cast(T.switch(T.round(hard_sigmoid(W)),1,-1), theano.config.floatX)
+    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)   #  B = sign(W)
 
-    alpha = T.mean(T.abs_(W), axis=0)
+    alpha = T.mean(T.abs_(W), axis=0)  #二值化系数       #这里注意，theano中W[L].shape = (X[L],X[L+1])
     return Wb, alpha
 
 def binarize_fc_input(fc_input):
@@ -57,11 +53,11 @@ def binarize_fc_input(fc_input):
     bin_out = binary_tanh_unit(fc_input)
     
     if(fc_input.ndim == 4):  # prev layer is conv or pooling. hence compute the l1 norm using all maps
-        beta = T.mean(T.abs_(fc_input), axis=[1, 2, 3])
+        beta = T.mean(T.abs_(fc_input), axis=[1, 2, 3])    # shape = (batch_size,1)
 
     else: # feeding layer is FC layer
-        beta = T.mean(T.abs_(fc_input), axis=1)
-
+        beta = T.mean(T.abs_(fc_input), axis=1)            # shape = (batch_size,1)
+    # beta中为每个batch 计算量均值
     return bin_out, beta
 
 
@@ -71,7 +67,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
     This is followed by the scaling with input and weight scaling factors K and alpha respectively.
     """
 
-    #def __init__(self, incoming, num_filters, filter_size, xnor=True, nonlinearity=lasagne.nonlinearities.identity, **kwargs):
+    
     def __init__(self, incoming, num_filters, filter_size, xnor=True, **kwargs):
 
         """
