@@ -39,7 +39,7 @@ def hard_sigmoid(x):
 # And like:
 #   hard_tanh(x) = 2*hard_sigmoid(x)-1 
 # during back propagation
-def binary_tanh_unit(x):
+def binary_tanh_unit(x):  
     return 2.*round3(hard_sigmoid(x))-1.
     
 def binary_sigmoid_unit(x):
