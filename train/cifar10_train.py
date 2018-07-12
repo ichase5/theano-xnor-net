@@ -3,11 +3,11 @@ import lasagne
 import numpy as np
 import theano
 import theano.tensor as T
-import cPickle
+import cPickle #将对象序列化
 import xnor_net
 import cnn_utils
 from external import bnn_utils
-import gzip
+import gzip #压缩
 from collections import OrderedDict
 
 def construct_cifar10_net(input_var, alpha, eps):
@@ -154,7 +154,7 @@ if __name__=='__main__':
     targets = T.fmatrix('target')
     LR = T.scalar('LR', dtype=theano.config.floatX)
 
-    # construct deep network
+   # construct deep network (构建深度网络)
     print('Constructing the network...')
     net = construct_cifar10_net(input_vars, alpha, eps)
 
