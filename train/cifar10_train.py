@@ -1,14 +1,14 @@
 import sys, os, time
-import lasagne
+import lasagne    #深度学习库
 import numpy as np
 import theano
 import theano.tensor as T
-import cPickle
+import cPickle  #用于将对象序列化的库
 import xnor_net
-import cnn_utils
+import cnn_utils   #这个脚本里只有一个加载数据集的load_data函数
 from external import bnn_utils
-import gzip
-from collections import OrderedDict
+import gzip  #压缩
+from collections import OrderedDict #有序字典
 
 def construct_cifar10_net(input_var, alpha, eps):
     # input layer
