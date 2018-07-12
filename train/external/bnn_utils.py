@@ -13,13 +13,13 @@ import theano.tensor as T
 
 import lasagne
 
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams  #类似numpy.random.RandomState()
 
 from theano.scalar.basic import UnaryScalarOp, same_out_nocomplex
 from theano.tensor.elemwise import Elemwise
 
 # Our own rounding function, that does not set the gradient to 0 like Theano's
-class Round3(UnaryScalarOp):
+class Round3(UnaryScalarOp):        ###？？？？？？？？？？？？？？？？
     
     def c_code(self, node, name, (x,), (z,), sub):
         return "%(z)s = round(%(x)s);" % locals()
@@ -34,34 +34,30 @@ round3 = Elemwise(round3_scalar)
 def hard_sigmoid(x):
     return T.clip((x+1.)/2.,0,1)
 
-# The neurons' activations binarization function
-# It behaves like the sign function during forward propagation
-# And like:
-#   hard_tanh(x) = 2*hard_sigmoid(x)-1 
-# during back propagation
-def binary_tanh_unit(x):
+
+def binary_tanh_unit(x):   #？？？？？？？？？？？？？？？？？？？？？？？？？？？
     return 2.*round3(hard_sigmoid(x))-1.
     
-def binary_sigmoid_unit(x):
+def binary_sigmoid_unit(x):   #？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
     return round3(hard_sigmoid(x))
 
 # This function computes the gradient of the binary weights
 def compute_grads(loss,network):
         
-    layers = lasagne.layers.get_all_layers(network)
+    layers = lasagne.layers.get_all_layers(network)  
     grads = []
     
     for layer in layers:
     
-        params = layer.get_params(xnor=True)
+        params = layer.get_params(xnor=True)   #xnor-net结构的网络的各个层的参数
         if params:
             # print(params[0].name)
-            grads.append(theano.grad(loss, wrt=layer.Wb))
+            grads.append(theano.grad(loss, wrt=layer.Wb))   #计算loss关于二值化的权重的梯度
                 
-    return grads
+    return grads  #梯度列表
 
-# This functions clips the weights after the parameter update
-def clipping_scaling(updates,network):
+
+def clipping_scaling(updates,network):  ##更新参数并裁剪
     
     layers = lasagne.layers.get_all_layers(network)
     updates = OrderedDict(updates)
@@ -71,14 +67,18 @@ def clipping_scaling(updates,network):
         params = layer.get_params(xnor=True)
         for param in params:
             print("W_LR_scale = "+str(layer.W_LR_scale))
-            updates[param] = param + layer.W_LR_scale*(updates[param] - param)
+            
+            #W_LR_scale为learning_rate扩大倍数，updates[param]为更新后的权重，param为未更新权重
+            #即先更新，然后调整更新的幅度 e.g. old=10,new=12, new=10+W_LR_scale(12-10)
+            updates[param] = param + layer.W_LR_scale*(updates[param] - param) 
+            
             updates[param] = T.clip(updates[param], -1.0,1.0)     
 
     return updates
 
 
-def train(train_fn,val_fn,
-            model,
+def train(train_fn,val_fn,     ##这两个function类似神经网络的forward函数
+            model,             #网络模型
             batch_size,
             LR_start,LR_decay,
             num_epochs,
@@ -88,8 +88,8 @@ def train(train_fn,val_fn,
             save_path=None,
             shuffle_parts=1):
     
-    # A function which shuffles a dataset
-    def shuffle(X,y):
+    
+    def shuffle(X,y):  # A function which shuffles a dataset
         
         # print(len(X))
         
@@ -117,14 +117,15 @@ def train(train_fn,val_fn,
     def train_epoch(X,y,LR):
         
         loss = 0
-        batches = len(X)/batch_size
+        batches = len(X)/batch_size  #总共有多少个batch
         
         for i in range(batches):
             new_loss = train_fn(X[i*batch_size:(i+1)*batch_size],y[i*batch_size:(i+1)*batch_size],LR)
             loss += new_loss
+            ##打印出当前是第几个batch,以及截至目前各个batch的loss的平均
             print('Train batch = {:d} of {:d}\tLoss = {:f}'.format(i, batches, float(loss)/(i+1)))
         
-        loss/=batches
+        loss/=batches  #最终epoch结束后各个batch的loss的平均
         
         return loss
     
@@ -133,37 +134,38 @@ def train(train_fn,val_fn,
         
         err = 0
         loss = 0
-        batches = len(X)/batch_size
+        batches = len(X)/batch_size   
         
         for i in range(batches):
             new_loss, new_err = val_fn(X[i*batch_size:(i+1)*batch_size], y[i*batch_size:(i+1)*batch_size])
-            err += new_err
-            loss += new_loss
+            err += new_err  ## 各个batch的错误率累加
+            loss += new_loss ## 各个batch的loss累加
             #print('Val batch = {:d}'.format(i))
         
-        err = err / batches * 100
-        loss /= batches
+        err = err / batches * 100  #各个batch的错误了平均
+        loss /= batches            #各个batch的loss平均
 
         return err, loss
    
-    # sanity check
+ 
     assert(len(X_train) == len(y_train)), 'Train data and label dimension does not match' 
     assert(len(X_val) == len(y_val)), 'Val data and label dimension does not match' 
     assert(len(X_test) == len(y_test)), 'Test data and label dimension does not match' 
+    
     # shuffle the train set
     X_train,y_train = shuffle(X_train,y_train)
     best_val_err = 100
-    best_epoch = 1
+    best_epoch = 1   #模型在哪个epoch最好
     LR = LR_start
     
     # We iterate over epochs:
     for epoch in range(num_epochs):
         
-        start_time = time.time()
+        start_time = time.time()  #每个epoch计时
         
         train_loss = train_epoch(X_train,y_train,LR)
         #print('Done train epoch')
-        X_train,y_train = shuffle(X_train,y_train)
+        X_train,y_train = shuffle(X_train,y_train) #每次训练完之后打乱train 数据
         
         val_err, val_loss = val_epoch(X_val,y_val)
         #print('Done validation epoch')
@@ -174,12 +176,13 @@ def train(train_fn,val_fn,
             best_val_err = val_err
             best_epoch = epoch+1
             #print('Starting test epoch')
-            test_err, test_loss = val_epoch(X_test,y_test)
+            test_err, test_loss = val_epoch(X_test,y_test)   ## val错误率小的epoch才进行test操作
             
-            if save_path is not None:
-                np.savez(save_path, *lasagne.layers.get_all_param_values(model))
+            #val错误率低的epoch才保存模型
+            if save_path is not None:  
+                np.savez(save_path, *lasagne.layers.get_all_param_values(model))   #保存模型    *代表这个参数将被分解
         
-        epoch_duration = time.time() - start_time
+        epoch_duration = time.time() - start_time   #每个epoch用时
         
         # Then we print the results for this epoch:
         print("Epoch "+str(epoch + 1)+" of "+str(num_epochs)+" took "+str(epoch_duration)+"s")
@@ -193,4 +196,4 @@ def train(train_fn,val_fn,
         print("  test error rate:               "+str(test_err)+"%") 
         
         # decay the LR
-        LR *= LR_decay
+        LR *= LR_decay 
