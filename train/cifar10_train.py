@@ -139,8 +139,8 @@ if __name__=='__main__':
 
     # hyper parameters
     batch_size = 50
-    alpha = 0.1
-    eps = 1e-4
+    alpha = 0.1  #batch norm参数
+    eps = 1e-4   #batch norm参数
     no_epochs = 200
     # learning rate
     # similar settings as in BinaryNet
