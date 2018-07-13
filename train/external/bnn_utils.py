@@ -13,7 +13,7 @@ import theano.tensor as T
 
 import lasagne
 
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams   #设置随机数种子
 
 from theano.scalar.basic import UnaryScalarOp, same_out_nocomplex
 from theano.tensor.elemwise import Elemwise
