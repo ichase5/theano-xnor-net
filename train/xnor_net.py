@@ -52,7 +52,7 @@ def binarize_fc_weights(W):
     alpha = T.mean(T.abs_(W), axis=0)
     return Wb, alpha
 
-def binarize_fc_input(fc_input):
+def binarize_fc_input(fc_input):   ####这里怎么不变形状成为向量呢？？？？？？？？？？？？？？是因为有其他地方去处理吗
 
     bin_out = binary_tanh_unit(fc_input)
     
@@ -84,21 +84,21 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
         filter_size: tuple
             Filter size of this layer. Leading dimension is = no of input feature maps.
         """
-        self.xnor = xnor
+        self.xnor = xnor    
 
         # average filter to compute scaling factor for activation
-        no_inputs = incoming.output_shape[1]
-        shape = (num_filters, no_inputs, filter_size[0], filter_size[1])
+        no_inputs = incoming.output_shape[1]       #输入数据的channel
+        shape = (num_filters, no_inputs, filter_size[0], filter_size[1])  #(num_of_filters,channel,height,width)
 
 
-        num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])
-        num_units = int(np.prod(filter_size)*num_filters)
-        self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units)))
+        num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])   #卷积核的元素个数
+        num_units = int(np.prod(filter_size)*num_filters)  #？？？？？？？？？？
+        self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units))) #？？？？？？？？
 
         if(self.xnor):
             super(Conv2DLayer, self).__init__(incoming,
-                num_filters, filter_size, W=lasagne.init.Uniform((-1, 1)), **kwargs)
-            self.params[self.W] = set(['xnor'])
+                num_filters, filter_size, W=lasagne.init.Uniform((-1, 1)), **kwargs)  #xnor参数初始化保证在-1~1之间
+            self.params[self.W] = set(['xnor'])   #？？？？？？？？
         else:
             super(Conv2DLayer, self).__init__(incoming, num_filters, filter_size, **kwargs)
 
@@ -109,7 +109,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
             self.beta_filter = self.add_param(beta_filter, shape, name='beta_filter', trainable=False, regularizable=False)
             Wb = np.zeros(shape=self.W.shape.eval(), dtype=np.float32)
             #alpha = np.ones(shape=(num_filters,), dtype=np.float32)
-            xalpha = lasagne.init.Constant(0.1)
+            xalpha = lasagne.init.Constant(0.1)   #参数初始化方式
             
             self.xalpha = self.add_param(xalpha, [num_filters,], name='xalpha', trainable=False, regularizable=False)
             #self.B = self.add_param(Wb, Wb.shape, name='B', trainable=False, regularizable=False)
