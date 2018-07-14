@@ -1,7 +1,7 @@
 # This code is taken from the BinaryNet implementation by Matthieu Courbariaux
 # The original code can be found here https://github.com/MatthieuCourbariaux/BinaryNet
 # The LICENSE for this piece of code is put under this directory
-from collections import OrderedDict
+from collections import OrderedDict  
 import time
 import numpy as np
 
@@ -13,12 +13,13 @@ import theano.tensor as T
 
 import lasagne
 
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams  #随机数种子
 
-from theano.scalar.basic import UnaryScalarOp, same_out_nocomplex
-from theano.tensor.elemwise import Elemwise
+from theano.scalar.basic import UnaryScalarOp, same_out_nocomplex  #辅助，不用管
+from theano.tensor.elemwise import Elemwise   #辅助，不用管
 
-# Our own rounding function, that does not set the gradient to 0 like Theano's
+# 自定义自动求导函数, 定义的round函数反向传播梯度不消失,将上层梯度传回去
+##pytorch 要用继承了troch.autograd.Function类的子类来定义
 class Round3(UnaryScalarOp):
     
     def c_code(self, node, name, (x,), (z,), sub):
@@ -29,20 +30,16 @@ class Round3(UnaryScalarOp):
         return gz, 
         
 round3_scalar = Round3(same_out_nocomplex, name='round3')
-round3 = Elemwise(round3_scalar)
+round3 = Elemwise(round3_scalar)   #四舍五入round函数
 
 def hard_sigmoid(x):
     return T.clip((x+1.)/2.,0,1)
 
-# The neurons' activations binarization function
-# It behaves like the sign function during forward propagation
-# And like:
-#   hard_tanh(x) = 2*hard_sigmoid(x)-1 
-# during back propagation
-def binary_tanh_unit(x):
+
+def binary_tanh_unit(x):   # 二值化 x[x<0] = -1  x[x>=0] = 1
     return 2.*round3(hard_sigmoid(x))-1.
     
-def binary_sigmoid_unit(x):
+def binary_sigmoid_unit(x):   #x[x<0] = 0 x[x>=0] = 1
     return round3(hard_sigmoid(x))
 
 # This function computes the gradient of the binary weights
@@ -53,7 +50,7 @@ def compute_grads(loss,network):
     
     for layer in layers:
     
-        params = layer.get_params(xnor=True)
+        params = layer.get_params(xnor=True) #只计算xnor=True的层Wb参数的梯度
         if params:
             # print(params[0].name)
             grads.append(theano.grad(loss, wrt=layer.Wb))
@@ -64,16 +61,17 @@ def compute_grads(loss,network):
 def clipping_scaling(updates,network):
     
     layers = lasagne.layers.get_all_layers(network)
-    updates = OrderedDict(updates)
+    updates = OrderedDict(updates)  #有序字典
     
     for layer in layers:
     
         params = layer.get_params(xnor=True)
         for param in params:
             print("W_LR_scale = "+str(layer.W_LR_scale))
-            updates[param] = param + layer.W_LR_scale*(updates[param] - param)
-            updates[param] = T.clip(updates[param], -1.0,1.0)     
-
+            updates[param] = param + layer.W_LR_scale*(updates[param] - param)   #？？？？？？？？？？ 
+            updates[param] = T.clip(updates[param], -1.0,1.0)     #裁剪到-1~1之间
+            ## updates 会被作为参数传给train_fn
+                
     return updates
 
 
