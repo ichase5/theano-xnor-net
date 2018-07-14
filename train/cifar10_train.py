@@ -178,17 +178,17 @@ if __name__=='__main__':
     if xnor:
         
         # W updates
-        W = lasagne.layers.get_all_params(net, xnor=True)
+        W = lasagne.layers.get_all_params(net, xnor=True)    #xnor层的参数
         W_grads = bnn_utils.compute_grads(loss,net)  # 各权重的梯度
         updates = lasagne.updates.adam(loss_or_grads=W_grads, params=W, learning_rate=LR)
         updates = bnn_utils.clipping_scaling(updates, net) #更新参数并裁剪    
         
         # other parameters updates
-        params = lasagne.layers.get_all_params(net, trainable=True, xnor=False)   #??????????????????
-        updates = OrderedDict(updates.items() + lasagne.updates.adam(loss_or_grads=loss,    #?????????????????????
-            params=params, learning_rate=LR).items())          #???????????????
+        params = lasagne.layers.get_all_params(net, trainable=True, xnor=False)   #非xnor层的参数
+        updates = OrderedDict(updates.items() +       #更新xnor层参数的规则
+        lasagne.updates.adam(loss_or_grads=loss, params=params, learning_rate=LR).items())   #更新非xnor层的参数
         
-    else: #非xnor
+    else: #非xnor 对所有参数一起更新 （这个不会运行的）
         params = lasagne.layers.get_all_params(net, trainable=True)
         updates = lasagne.updates.adam(loss_or_grads=loss, params=params, learning_rate=LR)
 
