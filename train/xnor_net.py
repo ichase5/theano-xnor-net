@@ -13,41 +13,33 @@ def binarize_conv_filters(W):
     W : theano tensor : convolution layer weight of dimension no_filters x no_feat_maps x h x w
     """
     # symbolic binary weight
-    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)
-    # BinaryNet method
-    #Wb = T.cast(T.switch(T.round(hard_sigmoid(W),1,-1)), theano.config.floatX)
-
-    # weight scaling factor
-    # FIXME: directly compute the mean along axis 1,2,3 instead of reshaping    
-    alpha = T.mean( T.reshape(T.abs_(W), (W.shape[0], W.shape[1]*W.shape[2]*W.shape[3])), axis=1)
+    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)  #Wb = sign(W)
+      
+    alpha = T.mean( T.reshape(T.abs_(W), (W.shape[0], W.shape[1]*W.shape[2]*W.shape[3])), axis=1) #每个卷积核单独计算
 
     return Wb, alpha
 
 def binarize_conv_input(conv_input, k):
 
-    # This is from BinaryNet.
-    # This acts like sign function during forward pass. and like hard_tanh during back propagation
-    bin_conv_out = binary_tanh_unit(conv_input)
+    bin_conv_out = binary_tanh_unit(conv_input)  # x[x<0] = -1   x[x>=0] = 1
 
     # scaling factor for the activation.
     A =T.abs_(conv_input)
 
     # K will have scaling matrixces for each input in the batch.
-    # K's shape = (batch_size, 1, map_height, map_width)
-    k_shape = k.eval().shape
-    pad = (k_shape[-2]/2, k_shape[-1]/2)
+    
+    k_shape = k.eval().shape  #（batch_size,channel,height,width)  k的height，width 和卷积核的height,width一致
+    pad = (k_shape[-2]/2, k_shape[-1]/2)  #k的height和width都是奇数
     # support the kernel stride. This is necessary for AlexNet
-    K = theano.tensor.nnet.conv2d(A, k, border_mode=pad)
+    K = theano.tensor.nnet.conv2d(A, k, border_mode=pad)    # K's shape = (batch_size, 1, map_height, map_width)
 
-    return bin_conv_out, K
+    return bin_conv_out, K #输入的二值化
     
 
 
 def binarize_fc_weights(W):
     # symbolic binary weight
-    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)
-    # BinaryNet method
-    #Wb = T.cast(T.switch(T.round(hard_sigmoid(W)),1,-1), theano.config.floatX)
+    Wb = T.cast(T.switch(T.ge(W, 0),1,-1), theano.config.floatX)  # Wb = sign(W) 
 
     alpha = T.mean(T.abs_(W), axis=0)
     return Wb, alpha
@@ -71,7 +63,6 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
     This is followed by the scaling with input and weight scaling factors K and alpha respectively.
     """
 
-    #def __init__(self, incoming, num_filters, filter_size, xnor=True, nonlinearity=lasagne.nonlinearities.identity, **kwargs):
     def __init__(self, incoming, num_filters, filter_size, xnor=True, **kwargs):
 
         """
@@ -93,7 +84,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
 
         num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])   #卷积核的元素个数
         num_units = int(np.prod(filter_size)*num_filters)  #？？？？？？？？？？
-        self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units))) #？？？？？？？？
+        self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units))) #？？？？？？？？为啥啊
 
         if(self.xnor):
             super(Conv2DLayer, self).__init__(incoming,
@@ -104,18 +95,18 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
 
 
         if self.xnor:
-            # average filter to compute the activation scaling factor
-            beta_filter = np.ones(shape=shape).astype(np.float32) / (no_inputs*filter_size[0]*filter_size[1])
+            # beta用来近似输入
+            beta_filter = np.ones(shape=shape).astype(np.float32) / (no_inputs*filter_size[0]*filter_size[1])  #shape为line82的
             self.beta_filter = self.add_param(beta_filter, shape, name='beta_filter', trainable=False, regularizable=False)
+            
             Wb = np.zeros(shape=self.W.shape.eval(), dtype=np.float32)
-            #alpha = np.ones(shape=(num_filters,), dtype=np.float32)
+            #xalpha用来近似权重
             xalpha = lasagne.init.Constant(0.1)   #参数初始化方式
             
             self.xalpha = self.add_param(xalpha, [num_filters,], name='xalpha', trainable=False, regularizable=False)
-            #self.B = self.add_param(Wb, Wb.shape, name='B', trainable=False, regularizable=False)
-            #print self.Wb
+            #xalpha  对于每个filter计算一次 shape = [num_filters,]
 
-    def convolve(self, input, deterministic=False, **kwargs):
+    def convolve(self, input, deterministic=False, **kwargs): #不忽略drop out
         """ Binary convolution. Both inputs and weights are binary (+1 or -1)
         This overrides convolve operation from Conv2DLayer implementation
         """
@@ -132,18 +123,14 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
             else:
                 alpha = self.xalpha 
 
-            # TODO: Use XNOR ops for the convolution. As of now using Lasagne's convolution for
-            # functionality verification.
-            # approx weight tensor
-            #W_full_precision = self.Wb * alpha.dimshuffle(0, 'x', 'x', 'x')
+         
             Wr = self.W
 
             self.W = self.Wb
 
-            feat_maps = super(Conv2DLayer, self).convolve(input, **kwargs)
-            # restore the approx full precision weight for gradiant computation
-            #self.W = W_full_precision
-            self.W = Wr
+            feat_maps = super(Conv2DLayer, self).convolve(input, **kwargs)  #二值化的输入和二值化的权重的卷积结果
+            
+            self.W = Wr #self.W是全精度的,保存权重
 
             # scale by K and alpha
             # FIXME: Actually we are scaling after adding bias here. Need to scale first and then add bias.
@@ -151,7 +138,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
             # may subtract the bias, scale by alpha and beta ans then add bias ?
             feat_maps = feat_maps * K
 
-            feat_maps = feat_maps * alpha.dimshuffle('x', 0, 'x', 'x')
+            feat_maps = feat_maps * alpha.dimshuffle('x', 0, 'x', 'x')  #alpha 扩维成(1,?,1,1)  #最终的近似卷积结果
         else:
             feat_maps = super(Conv2DLayer, self).convolve(input, **kwargs)
     
