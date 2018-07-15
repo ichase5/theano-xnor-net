@@ -79,7 +79,7 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
 
         # average filter to compute scaling factor for activation
         no_inputs = incoming.output_shape[1]       #输入数据的channel
-        shape = (num_filters, no_inputs, filter_size[0], filter_size[1])  #(num_of_filters,channel,height,width)
+        shape = (num_filters, no_inputs, filter_size[0], filter_size[1])  #(num_of_filters,channel,height,width) 卷积核
 
 
         num_inputs = int(np.prod(filter_size)*incoming.output_shape[1])   #卷积核的元素个数
@@ -87,8 +87,8 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
         self.W_LR_scale = np.float32(1./np.sqrt(1.5 / (num_inputs + num_units))) #？？？？？？？？为啥啊
 
         if(self.xnor):
-            super(Conv2DLayer, self).__init__(incoming,
-                num_filters, filter_size, W=lasagne.init.Uniform((-1, 1)), **kwargs)  #xnor参数初始化保证在-1~1之间
+            #xnor参数初始化保证在-1~1之间
+            super(Conv2DLayer, self).__init__(incoming,num_filters, filter_size, W=lasagne.init.Uniform((-1, 1)), **kwargs)  
             self.params[self.W] = set(['xnor'])   #？？？？？？？？
         else:
             super(Conv2DLayer, self).__init__(incoming, num_filters, filter_size, **kwargs)
@@ -96,50 +96,50 @@ class Conv2DLayer(lasagne.layers.Conv2DLayer):
 
         if self.xnor:
             # beta用来近似输入
-            beta_filter = np.ones(shape=shape).astype(np.float32) / (no_inputs*filter_size[0]*filter_size[1])  #shape为line82的
+            #每个卷积核对应一个输入单元，这个输入单元要有一个beta_filter
+            beta_filter = np.ones(shape=shape).astype(np.float32) / (no_inputs*filter_size[0]*filter_size[1])  #shape =  (num_of_filters,channel,height,width) 
             self.beta_filter = self.add_param(beta_filter, shape, name='beta_filter', trainable=False, regularizable=False)
             
-            Wb = np.zeros(shape=self.W.shape.eval(), dtype=np.float32)
+            Wb = np.zeros(shape=self.W.shape.eval(), dtype=np.float32)  #存储二值化权重
             #xalpha用来近似权重
-            xalpha = lasagne.init.Constant(0.1)   #参数初始化方式
-            
+            xalpha = lasagne.init.Constant(0.1)   
             self.xalpha = self.add_param(xalpha, [num_filters,], name='xalpha', trainable=False, regularizable=False)
-            #xalpha  对于每个filter计算一次 shape = [num_filters,]
+            #xalpha  对于每个filter计算一次 shape = (num_filters,)
 
-    def convolve(self, input, deterministic=False, **kwargs): #不忽略drop out
+    def convolve(self, input, deterministic=False, **kwargs): 
         """ Binary convolution. Both inputs and weights are binary (+1 or -1)
         This overrides convolve operation from Conv2DLayer implementation
         """
         if(self.xnor):
             # compute the binary inputs H and the scaling matrix K
-            input, K = binarize_conv_input(input, self.beta_filter)
+            input, K = binarize_conv_input(input, self.beta_filter)  #二值化的输入和K
 
             # Compute the binarized filters are the scaling matrix
-            self.Wb, alpha = binarize_conv_filters(self.W)
-            if not deterministic:
-                old_alpha = theano.clone(self.xalpha, share_inputs=False)
-                old_alpha.default_update = alpha
+            self.Wb, alpha = binarize_conv_filters(self.W)  #二值化的权重和alpha
+            
+            if not deterministic:  #训练过程
+                old_alpha = theano.clone(self.xalpha, share_inputs=False) #赋值
+                old_alpha.default_update = alpha 
                 alpha += 0*old_alpha
-            else:
+            else:#不训练
                 alpha = self.xalpha 
-
+            
+            #alpha.shape = (num_of_filters,)
          
-            Wr = self.W
+            Wr = self.W #Wr保持原来的初始的参数
 
-            self.W = self.Wb
+            self.W = self.Wb  #网络使用二值化的参数去进行卷积forward，backward
 
             feat_maps = super(Conv2DLayer, self).convolve(input, **kwargs)  #二值化的输入和二值化的权重的卷积结果
             
-            self.W = Wr #self.W是全精度的,保存权重
+            self.W = Wr #恢复原始精度
 
-            # scale by K and alpha
-            # FIXME: Actually we are scaling after adding bias here. Need to scale first and then add bias.
-            # The super class method automatically adds bias. Somehow need to overcome this..
-            # may subtract the bias, scale by alpha and beta ans then add bias ?
-            feat_maps = feat_maps * K
+            #注意，这里有问题，Conv2D卷积操作自动添加了bias,应该最后再加的。。。。FIXME
+            feat_maps = feat_maps * K #点乘，K需要扩维广播
 
-            feat_maps = feat_maps * alpha.dimshuffle('x', 0, 'x', 'x')  #alpha 扩维成(1,?,1,1)  #最终的近似卷积结果
-        else:
+            feat_maps = feat_maps * alpha.dimshuffle('x', 0, 'x', 'x')  #alpha 扩维成(1,num_of_filters,1,1)，再广播运算  #最终的近似卷积结果
+            
+        else:#普通卷积
             feat_maps = super(Conv2DLayer, self).convolve(input, **kwargs)
     
         return feat_maps
@@ -153,8 +153,8 @@ class DenseLayer(lasagne.layers.DenseLayer):
         """ XNOR-Net fully connected layer
         """
         self.xnor = xnor
-        num_inputs = int(np.prod(incoming.output_shape[1:]))
-        self.W_LR_scale = np.float32(1./np.sqrt(1.5/ (num_inputs + num_units)))
+        num_inputs = int(np.prod(incoming.output_shape[1:])) #输入的元素数（单个输入，no batch)
+        self.W_LR_scale = np.float32(1./np.sqrt(1.5/ (num_inputs + num_units)))   #num_units是全连接层的输出单元数
         if(self.xnor):
             super(DenseLayer, self).__init__(incoming, num_units,  W=lasagne.init.Uniform((-1, 1)), **kwargs)
             self.params[self.W]=set(['xnor'])
@@ -163,7 +163,7 @@ class DenseLayer(lasagne.layers.DenseLayer):
 
         if self.xnor:
             #Wb = np.zeros(shape=self.W.shape.eval(), dtype=np.float32)
-            xalpha = np.zeros(shape=(num_units,), dtype=np.float32)
+            xalpha = np.zeros(shape=(num_units,), dtype=np.float32) #权重近似系数
             self.xalpha = self.add_param(xalpha, xalpha.shape, name='xalpha', trainable=False, regularizable=False)
             #self.Wb = self.add_param(Wb, Wb.shape, name='Wb', trainable=False, regularizable=False)
 
@@ -176,22 +176,21 @@ class DenseLayer(lasagne.layers.DenseLayer):
 
             # compute weight scaling factor.
             self.Wb, alpha = binarize_fc_weights(self.W)
-            if not deterministic:
+            
+            if not deterministic:#训练
                 old_alpha = theano.clone(self.xalpha, share_inputs=False)
-                old_alpha.default_update = alpha
+                old_alpha.default_update = alpha  #？？？？？？？？？？？？？？
                 alpha += 0*old_alpha
-            else:
+            else:#不训练
                 alpha = self.xalpha
 
             #W_full_precision = self.Wb * alpha.dimshuffle('x', 0)
             Wr = self.W
             self.W = self.Wb
-                
+            
+            #同样的，这里有问题，不应该先添加bias
             fc_out = super(DenseLayer, self).get_output_for(bin_input, **kwargs)
-            # scale the output by alpha and beta
-            # FIXME: Actually we are scaling after adding bias here. Need to scale first and then add bias.
-            # The super class method automatically adds bias. Somehow need to overcome this..
-            # may subtract the bias, scale by alpha and beta ans then add bias ?
+            
             fc_out = fc_out * beta.dimshuffle(0, 'x')
 
             fc_out = fc_out * alpha.dimshuffle('x', 0)
